@@ -23,6 +23,20 @@ def test_is_safe_filename(path_utils):
     assert not path_utils.is_safe_filename("invalid?")
     assert not path_utils.is_safe_filename("invalid*")
 
+    # Windows reserved names
+    assert not path_utils.is_safe_filename("CON")
+    assert not path_utils.is_safe_filename("con.txt")
+    assert not path_utils.is_safe_filename("NUL")
+    assert not path_utils.is_safe_filename("COM1")
+    assert not path_utils.is_safe_filename("LPT1.log")
+
+    # Names ending with period or space
+    assert not path_utils.is_safe_filename("file.")
+    assert not path_utils.is_safe_filename("file ")
+
+    # Backslash in name (path traversal)
+    assert not path_utils.is_safe_filename("sub\\file")
+
 def test_get_drive_path(path_utils):
     assert path_utils.get_drive_path("c") == Path("C:/")
     assert path_utils.get_drive_path("D") == Path("D:/")

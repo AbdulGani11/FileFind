@@ -14,7 +14,6 @@ Features:
 """
 
 import os
-import subprocess
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -114,14 +113,26 @@ class PathUtils:
             return False
 
         # Directory traversal protection - these patterns can escape intended directories
-        dangerous_patterns = ["../", "..\\"]
-        name_lower = name.lower()
-        if any(pattern in name_lower for pattern in dangerous_patterns):
+        if ".." in name or "\\" in name:
             return False
 
         # Windows file system restrictions - these characters cause errors
         invalid_chars = '<>:"|?*'
         if any(char in name for char in invalid_chars):
+            return False
+
+        # Windows reserved names (cannot be used as file/folder names)
+        reserved_names = {
+            "con", "prn", "aux", "nul",
+            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
+            "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        }
+        base_name = name.split(".")[0].lower()
+        if base_name in reserved_names:
+            return False
+
+        # Windows doesn't allow names ending with periods or spaces
+        if name.endswith(".") or name.endswith(" "):
             return False
 
         return True
@@ -806,18 +817,14 @@ class FileCommander:
         """
         Open file or folder using system default applications.
 
-        Uses Windows-specific commands but could be extended for cross-platform support.
+        Uses Windows os.startfile which safely handles paths without shell injection risk.
         """
 
         def open_operation():
-            if item_path.is_dir():
-                # Open folder in Windows Explorer
-                subprocess.Popen(f'explorer "{item_path}"', shell=True)
-                UIUtils.print_success(f"Opened folder: {item_path.name}")
-            else:
-                # Open file with default application
-                os.startfile(str(item_path))
-                UIUtils.print_success(f"Opened file: {item_path.name}")
+            # os.startfile works for both files and folders on Windows
+            os.startfile(str(item_path))
+            item_type = PathUtils.get_item_type(item_path)
+            UIUtils.print_success(f"Opened {item_type}: {item_path.name}")
 
         UIUtils.safe_execute("opening item", open_operation)
 
@@ -1053,7 +1060,7 @@ class FileCommander:
                 "[bold cyan]📁 Do you want to create subfolders?[/bold cyan]",
                 default=False,
             ):
-                self._create_subfolders_with_files(folder_path)
+                self._create_subfolders(folder_path, allow_files=True)
 
             # Offer to open the created folder
             UIUtils.print_separator()
@@ -1068,8 +1075,14 @@ class FileCommander:
         UIUtils.safe_execute("creating folder with files", create_operation)
         UIUtils.print_section_break()
 
-    def _create_subfolders(self, parent_path: Path):
-        """Create subfolders in parent directory (folder-only option)."""
+    def _create_subfolders(self, parent_path: Path, allow_files: bool = False):
+        """
+        Create subfolders in parent directory.
+
+        Args:
+            parent_path: Directory to create subfolders in
+            allow_files: If True, offer to add files to each subfolder
+        """
         UIUtils.print_info(f"Creating subfolders in: {parent_path.name}")
 
         while True:
@@ -1084,34 +1097,14 @@ class FileCommander:
                 subfolder_path = parent_path / subfolder_name
                 subfolder_path.mkdir(parents=True, exist_ok=True)
                 UIUtils.print_success(f"Created subfolder: {subfolder_name}")
-            except Exception as e:
-                UIUtils.print_error(f"Error creating subfolder: {e}")
 
-    def _create_subfolders_with_files(self, parent_path: Path):
-        """Create subfolders with option to add files to each."""
-        UIUtils.print_info(f"Creating subfolders in: {parent_path.name}")
-
-        while True:
-            subfolder_name = Prompt.ask("📁 Subfolder name (or 'done' to finish)")
-            if subfolder_name.lower() == "done":
-                break
-
-            if not UIUtils.validate_filename_or_show_error(subfolder_name):
-                continue
-
-            try:
-                subfolder_path = parent_path / subfolder_name
-                subfolder_path.mkdir(parents=True, exist_ok=True)
-                UIUtils.print_success(f"Created subfolder: {subfolder_name}")
-
-                # Ask about adding files to this subfolder
-                if Confirm.ask(
+                if allow_files and Confirm.ask(
                     f"[bold cyan]📄 Add files to '{subfolder_name}'?[/bold cyan]",
                     default=False,
                 ):
                     self._create_additional_files(subfolder_path)
 
-            except Exception as e:
+            except (PermissionError, OSError) as e:
                 UIUtils.print_error(f"Error creating subfolder: {e}")
 
     def _create_additional_files(self, parent_path: Path):
@@ -1130,7 +1123,7 @@ class FileCommander:
                 file_path = parent_path / file_name
                 file_path.write_text("", encoding="utf-8")
                 UIUtils.print_success(f"Created file: {file_name}")
-            except Exception as e:
+            except (PermissionError, OSError) as e:
                 UIUtils.print_error(f"Error creating file: {e}")
 
     def list_directory(self):

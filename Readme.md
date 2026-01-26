@@ -28,7 +28,6 @@
 2.  **Set up environment:**
     ```bash
     python -m venv venv
-    # Windows:
     venv\Scripts\activate
     ```
 
@@ -49,7 +48,7 @@ The menu is controlled by your keyboard:
 1.  **📁 Create**: Make new files and folders easily.
 2.  **⚡ Search**: Find any file instantly (you can open or rename them too).
 3.  **📋 List**: See what is inside your folders.
-4.  **⚙️ Stats**: Check how many files are indexed and memory usage.
+4.  **⚙️ Stats**: Check how many files are indexed.
 
 ## 🧪 Development & Testing
 
@@ -67,7 +66,7 @@ Every time we update the code, GitHub automatically runs tests on Python 3.10, 3
 ## 🔧 Technical Details (For Developers)
 
 *   **Language**: Python 3.10+ (with Type Hints)
-*   **Data Structure**: Prefix Trie & DFS
+*   **Data Structure**: Prefix Trie & Inverted Index
 *   **UI Library**: Rich
 *   **Testing**: Pytest & GitHub Actions
 

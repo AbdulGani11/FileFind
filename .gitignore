@@ -22,6 +22,13 @@ env/
 .vscode/
 .idea/
 
+# Claude Code
+.claude/
+
+# Documentation (keep only Readme.md)
+IMPROVEMENTS.md
+TECHNOLOGIES.md
+
 # Operating System
 .DS_Store
 Thumbs.db
