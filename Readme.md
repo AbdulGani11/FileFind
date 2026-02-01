@@ -1,21 +1,22 @@
-# ⚡ File Commander
+# FileFind
 
 [![CI](https://github.com/AbdulGani11/file-commander/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdulGani11/file-commander/actions)
 ![Platform Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-**Smart operations made simple.** A fast, offline tool for Windows that helps you find and manage files instantly. It runs in your terminal but looks and feels like a professional app.
+**File search tool for Windows.** Uses Trie data structures and multi-strategy algorithms for O(m) search complexity where m = query length.
 
 ---
 
 ## 🚀 Key Features
 
-*   **⚡ Instant Search**: Finds files immediately, no matter how many you have. It uses advanced **Trie technology** (Prefix Trees) to search as fast as you type.
-*   **🎨 Modern Design**: A clean, easy-to-read interface with colors, icons, and tables. No messy text blocks.
-*   **🛡️ Safe & Secure**: Automatically blocks unsafe file names to protect your computer from errors.
-*   **🧠 Smart Memory**: Scans your folders once and remembers them. You can search again and again without waiting.
-*   **🧪 Reliable**: Tested automatically on every change to ensure it never breaks.
+*   **⚡ Multi-Strategy Search**: Combines 4 search algorithms (exact match, Trie prefix, word index, substring).
+*   **🎯 Trie Data Structure**: O(m) prefix matching where m = query length. Search time depends only on query length, not collection size.
+*   **🧠 Smart Indexing**: Targeted C: drive indexing (user folders only) and complete indexing for other drives.
+*   **📊 Relevance Ranking**: Results sorted by exact match, prefix match, filename length, and common directory location.
+*   **🛡️ Security Validation**: Blocks directory traversal attacks, Windows reserved names, and invalid characters.
+*   **🧪 CI/CD Tested**: Automated testing on Python 3.10, 3.11, and 3.12 with GitHub Actions.
 
 ## 🛠️ Installation
 
@@ -44,24 +45,46 @@ python file-commander.py
 ```
 
 ### 📋 What can it do?
-The menu is controlled by your keyboard:
-1.  **📁 Create**: Make new files and folders easily.
-2.  **⚡ Search**: Find any file instantly (you can open or rename them too).
-3.  **📋 List**: See what is inside your folders.
-4.  **⚙️ Stats**: Check how many files are indexed.
+Interactive menu with two options:
+1.  **⚡ Search**: Find files with multi-strategy search. Open or rename with undo support.
+2.  **📊 Statistics**: View indexed file counts and performance metrics.
+
+### 🔍 How It Works
+
+1.  **Smart Indexing**: On first search, indexes your drives using a smart strategy:
+    *   C: drive - Only indexes common user folders (Desktop, Documents, Downloads, Pictures, Videos)
+    *   Other drives - Complete indexing of all accessible files
+2.  **Multi-Strategy Search**: When you search, runs 4 parallel algorithms:
+    *   Exact match for direct filename hits
+    *   Trie prefix matching for autocomplete-style results
+    *   Word index for multi-word queries
+    *   Substring search as fallback
+3.  **Relevance Ranking**: Results sorted by exact matches first, then prefix matches, then by filename length and directory frequency
+4.  **File Operations**: Select results to open with default app or rename with undo support
 
 ## 🧪 Development & Testing
 
-This project is built with high standards.
-
 **Run Tests:**
 ```bash
-# Check if everything works
 pytest
 ```
 
+**Test Results:**
+```
+7 passed in 0.07s ✅
+
+Test Coverage:
+✓ Filename validation (security, length limits, reserved names)
+✓ Drive path detection and conversion
+✓ File/folder type identification
+✓ Trie insert and prefix search
+✓ Case-insensitive search
+✓ Search index operations
+✓ Relevance-based ranking
+```
+
 **Auto-Checks (CI):**
-Every time we update the code, GitHub automatically runs tests on Python 3.10, 3.11, and 3.12 to make sure it works for everyone.
+GitHub Actions automatically runs tests on Python 3.10, 3.11, and 3.12 for every push.
 
 ## 🔧 Technical Details (For Developers)
 

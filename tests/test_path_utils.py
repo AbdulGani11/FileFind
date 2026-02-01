@@ -37,6 +37,10 @@ def test_is_safe_filename(path_utils):
     # Backslash in name (path traversal)
     assert not path_utils.is_safe_filename("sub\\file")
 
+    # Filename length limits (Windows max = 255 chars)
+    assert path_utils.is_safe_filename("a" * 255)  # Exactly 255 chars - valid
+    assert not path_utils.is_safe_filename("a" * 256)  # 256 chars - invalid
+
 def test_get_drive_path(path_utils):
     assert path_utils.get_drive_path("c") == Path("C:/")
     assert path_utils.get_drive_path("D") == Path("D:/")

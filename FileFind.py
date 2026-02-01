@@ -1,16 +1,9 @@
 #!/usr/bin/env python3
 """
-File Commander - Interactive File Search and Basic Operations
+FileFind - File Search Tool
 
-An interactive file search tool that helps users find, create, and perform basic
-operations on their files. Features fast file discovery and an intuitive
-menu-driven interface.
-
-Features:
-- 📁 Create Files & Folders - Create new folders and files with nested structures
-- ⚡ Search & Manage Files/Folders - Find files and perform basic operations (open, rename)
-- 📋 List Directory Contents - Browse and explore folder contents
-- ⚙️ Search Statistics - View search index status and performance
+Search using Trie data structures and multi-strategy algorithms.
+Built for Windows.
 """
 
 import os
@@ -51,18 +44,18 @@ MAX_FILENAME_SCORE_BONUS = 30  # Maximum bonus for shorter filenames in relevanc
 DEFAULT_SEARCH_RESULTS = 50  # Default number of search results to return
 DISPLAY_RESULTS_LIMIT = 20  # Maximum results to display in table
 
+# Relevance scoring weights (higher = more relevant)
+SCORE_EXACT_MATCH = 100  # Query exactly matches filename
+SCORE_STARTS_WITH = 80   # Filename starts with query (autocomplete-style)
+SCORE_CONTAINS = 50      # Filename contains query somewhere
+
 
 
 # UTILITY CLASSES - Reusable components for common operations
 
 
 class PathUtils:
-    """
-    Utility methods for safe and efficient path operations.
-
-    Handles drive detection, path validation, and security checks to prevent
-    common file system vulnerabilities like directory traversal attacks.
-    """
+    """Safe path operations with security validation and drive detection."""
 
     @staticmethod
     def get_drive_path(drive_letter: str) -> Path:
@@ -71,12 +64,7 @@ class PathUtils:
 
     @staticmethod
     def get_available_drives() -> List[str]:
-        """
-        Scan system for available drive letters.
-
-        Returns list of drive letters that actually exist and are accessible.
-        Useful for building dynamic folder lists across different systems.
-        """
+        """Return list of accessible drive letters (C, D, E, etc.)."""
         drives = []
         for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
             if PathUtils.get_drive_path(letter).exists():
@@ -90,24 +78,13 @@ class PathUtils:
 
     @staticmethod
     def should_skip_directory(path: Path) -> bool:
-        """
-        Security check: determine if directory should be skipped during indexing.
-
-        Skips system directories to improve performance and avoid indexing
-        sensitive system files that users don't typically want to search.
-        """
-        path_str = str(path).lower()
-        return any(skip in path_str for skip in SKIP_DIRECTORIES)
+        """Return True if directory should be skipped (system folders, node_modules, etc.)."""
+        path_parts = [p.lower() for p in path.parts]
+        return any(skip in path_parts for skip in SKIP_DIRECTORIES)
 
     @staticmethod
     def is_safe_filename(name: str) -> bool:
-        """
-        Security validation for user-provided file/folder names.
-
-        Prevents directory traversal attacks (like '../../../etc/passwd')
-        and ensures compatibility with Windows file system restrictions.
-        Essential for any file manager that accepts user input.
-        """
+        """Validate filename blocks directory traversal and Windows reserved names."""
         # Check for empty or whitespace-only names
         if not name or not name.strip():
             return False
@@ -135,6 +112,10 @@ class PathUtils:
         if name.endswith(".") or name.endswith(" "):
             return False
 
+        # Windows filename length limit (255 characters)
+        if len(name) > 255:
+            return False
+
         return True
 
     @staticmethod
@@ -149,23 +130,11 @@ class PathUtils:
 
 
 class UIUtils:
-    """
-    User interface utilities for consistent, interactive terminal experience.
-
-    Centralizes common UI patterns like table creation, option menus, error
-    handling, and visual formatting to ensure consistent look and feel.
-    """
+    """Terminal UI helpers for tables, menus, messages, and user input."""
 
     @staticmethod
     def create_results_table(title: str, columns: List[Tuple[str, str, int]]) -> Table:
-        """
-        Create standardized table for displaying search results.
-
-        Args:
-            title: Table title shown at the top
-            columns: List of (name, style, width) tuples for each column
-                    width=0 means auto-size the column
-        """
+        """Create Rich table with title and columns (name, style, width). Width 0 = auto-size."""
         table = Table(title=title)
         for name, style, width in columns:
             if width:
@@ -190,16 +159,7 @@ class UIUtils:
 
     @staticmethod
     def show_options_and_choose(options: List[str], prompt: str) -> str:
-        """
-        Display numbered menu options and get user selection.
-
-        This pattern appears frequently in interactive applications:
-        1. Show numbered options
-        2. Get user choice
-        3. Validate input
-
-        Consolidating it here ensures consistent UI behavior.
-        """
+        """Display numbered options and return validated user choice."""
         for option in options:
             console.print(option)
 
@@ -245,12 +205,7 @@ class UIUtils:
 
     @staticmethod
     def validate_filename_or_show_error(name: str) -> bool:
-        """
-        Validate filename and show error if invalid.
-
-        Returns True if valid, False if invalid (with error shown).
-        Consolidates the common pattern of validation + error display.
-        """
+        """Validate filename and print error if invalid. Returns True if valid."""
         if not PathUtils.is_safe_filename(name):
             UIUtils.print_error(
                 "Invalid name. Avoid empty names, '..' patterns, and special characters"
@@ -260,20 +215,16 @@ class UIUtils:
 
     @staticmethod
     def safe_execute(operation_name: str, func, *args, **kwargs) -> Any:
-        """
-        Execute file operations with comprehensive error handling.
-
-        File system operations can fail for many reasons (permissions, disk space,
-        network issues, etc.). This wrapper provides consistent error messages
-        and prevents crashes from propagating to the user interface.
-        """
+        """Execute function with error handling. Catches file system errors."""
         try:
             return func(*args, **kwargs)
         except PermissionError:
             UIUtils.print_error(f"Permission denied: {operation_name}")
         except FileNotFoundError:
             UIUtils.print_error(f"File not found: {operation_name}")
-        except Exception as e:
+        except FileExistsError:
+            UIUtils.print_error(f"File already exists: {operation_name}")
+        except OSError as e:
             UIUtils.print_error(f"{operation_name} - {e}")
         return None
 
@@ -283,13 +234,7 @@ class UIUtils:
 
 
 class TrieNode:
-    """
-    Node in a Trie (prefix tree) data structure.
-
-    A Trie allows fast prefix matching - essential for autocomplete-style search
-    where users type partial names like "The Int" to find "The Intern".
-    Each node stores characters and associated files.
-    """
+    """Trie node storing children (char -> TrieNode) and files matching this prefix."""
 
     def __init__(self):
         self.children = {}  # Dictionary mapping characters to child nodes
@@ -297,26 +242,13 @@ class TrieNode:
 
 
 class Trie:
-    """
-    Trie (prefix tree) for ultra-fast prefix-based file search.
-
-    Why use a Trie?
-    - Allows instant prefix matching: "The" finds all files starting with "The"
-    - Much faster than scanning all filenames repeatedly
-    - Enables autocomplete-style search functionality
-    - Scales well with large file collections
-    """
+    """Prefix tree for O(m) prefix matching where m = query length."""
 
     def __init__(self):
         self.root = TrieNode()
 
     def insert(self, word: str, file_path: Path):
-        """
-        Insert a word (filename) into the trie with associated file path.
-
-        As we traverse each character, we add the file to every prefix node.
-        This means searching for "The" will find files like "The Intern.mp4".
-        """
+        """Insert word into trie. Adds file_path to every prefix node for partial matching."""
         node = self.root
         for char in word.lower():
             if char not in node.children:
@@ -326,12 +258,7 @@ class Trie:
             node.files.append(file_path)
 
     def search_prefix(self, prefix: str, max_results: int = 20) -> List[Path]:
-        """
-        Find all files matching a prefix (like autocomplete).
-
-        Returns unique files to avoid duplicates from multiple word matches.
-        Essential for responsive search as users type partial names.
-        """
+        """Find unique files matching prefix. Returns up to max_results."""
         node = self.root
         for char in prefix.lower():
             if char not in node.children:
@@ -344,12 +271,7 @@ class Trie:
 
 
 class FileMetadata:
-    """
-    Lightweight wrapper for file and folder information to avoid repeated Path operations.
-
-    Caches commonly-needed properties to improve search performance
-    when dealing with thousands of files and folders.
-    """
+    """Cached file info (path, name, suffix, is_dir) to avoid repeated Path operations."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -359,18 +281,7 @@ class FileMetadata:
 
 
 class FileSearchIndex:
-    """
-    High-performance file and folder search engine with multiple search strategies.
-
-    Combines several search approaches for comprehensive file and folder discovery:
-    1. Trie for prefix matching (autocomplete-style)
-    2. Exact filename lookup (fastest for known names)
-    3. Word-based search (handles different word orders)
-    4. Substring search (broadest matching)
-
-    This multi-strategy approach ensures users find files and folders regardless of
-    how they remember or type the filename.
-    """
+    """Multi-strategy search: exact match (O(1)), Trie prefix (O(m)), word index, substring."""
 
     def __init__(self):
         # Trie for fast prefix search (like autocomplete)
@@ -390,13 +301,7 @@ class FileSearchIndex:
         self.total_items = 0
 
     def add_file(self, file_path: Path):
-        """
-        Add a single file or folder to all search indexes.
-
-        This is the core indexing operation that makes files and folders searchable
-        through multiple strategies. Skip if already indexed to avoid duplicates.
-        Despite the method name, this works for both files and directories.
-        """
+        """Index file/folder in Trie, exact_match, and word_index. Skips duplicates."""
         # Avoid duplicate indexing (important for performance)
         if str(file_path).lower() in self.indexed_paths:
             return
@@ -431,13 +336,7 @@ class FileSearchIndex:
             pass
 
     def index_folder(self, folder_path: Path) -> int:
-        """
-        Index all files and folders in a directory and its subdirectories.
-
-        Returns the number of items (files + folders) successfully indexed, which helps
-        users understand indexing progress and completeness.
-        Uses recursive glob (rglob) for efficient directory traversal.
-        """
+        """Recursively index all files/folders in directory. Returns count of items indexed."""
         items_added = 0
 
         if not PathUtils.is_valid_folder(folder_path):
@@ -461,17 +360,7 @@ class FileSearchIndex:
         return items_added
 
     def search(self, query: str, max_results: int = 20) -> List[Path]:
-        """
-        Multi-strategy search combining all indexing approaches.
-
-        Search progression from fastest to broadest:
-        1. Exact match (instant hash lookup)
-        2. Prefix search (Trie-based autocomplete)
-        3. Word search (handles different word orders)
-        4. Substring search (broadest matching)
-
-        This ensures we find files efficiently while providing comprehensive results.
-        """
+        """Search using 4 strategies: exact, prefix, word, substring. Returns top results by relevance."""
         if not query.strip():
             return []
 
@@ -506,16 +395,7 @@ class FileSearchIndex:
         return self._sort_by_relevance(list(results), query)[:max_results]
 
     def _sort_by_relevance(self, results: List[Path], query: str) -> List[Path]:
-        """
-        Sort search results by relevance score for better user experience.
-
-        Scoring prioritizes:
-        1. Exact matches (highest score)
-        2. Filenames starting with query
-        3. Filenames containing query
-        4. Shorter filenames (usually more relevant)
-        5. Files in common directories
-        """
+        """Sort by score: exact match > starts with > contains > shorter names > common dirs."""
 
         def score(path: Path) -> int:
             filename = path.name.lower()
@@ -523,13 +403,13 @@ class FileSearchIndex:
 
             # Exact match gets highest priority
             if query == filename:
-                relevance_score += 100
+                relevance_score += SCORE_EXACT_MATCH
             # Starts with query (like autocomplete)
             elif filename.startswith(query):
-                relevance_score += 80
+                relevance_score += SCORE_STARTS_WITH
             # Contains query somewhere
             elif query in filename:
-                relevance_score += 50
+                relevance_score += SCORE_CONTAINS
 
             # Shorter filenames often more relevant (less clutter)
             relevance_score += max(0, MAX_FILENAME_SCORE_BONUS - len(filename))
@@ -552,16 +432,7 @@ class FileSearchIndex:
 
 
 class FileCommander:
-    """
-    Main application class providing interactive file management.
-
-    Features:
-    - Priority-ordered folder scanning (common locations first)
-    - Secure file operations with input validation
-    - Intuitive menu-driven interface
-    - Fast incremental indexing
-    - Nested file/folder creation capabilities
-    """
+    """Interactive file search application with Trie-based indexing and multi-strategy search."""
 
     def __init__(self):
         self.desktop = Path.home() / "Desktop"
@@ -577,7 +448,7 @@ class FileCommander:
         title.append("⚡ ", style="bold yellow")
         title.append("FILE COMMANDER", style="bold bright_cyan")
         
-        subtitle = Text("Smart File Operations Made Simple", style="dim white")
+        subtitle = Text("High-Performance File Search Engine", style="dim white")
         
         # Create header panel with rounded borders
         header_content = Text.assemble(
@@ -599,10 +470,8 @@ class FileCommander:
 
         # Main menu options
         options = [
-            ("1", "📁", "Create Files & Folders", "Create new folders and files"),
-            ("2", "⚡", "Search & Manage", "Fast search with open/rename"),
-            ("3", "📋", "List Directory", "Browse folder contents"),
-            ("4", "⚙️", "Statistics", "View search index status"),
+            ("1", "⚡", "Search", "Find and manage files"),
+            ("2", "📊", "Statistics", "View search index status"),
             ("0", "❌", "Exit", "Close application"),
         ]
 
@@ -616,7 +485,7 @@ class FileCommander:
         )
         
         table.add_column("", style="bold yellow", width=3, justify="center")
-        table.add_column("", width=2, justify="center")
+        table.add_column("", width=3, justify="center")
         table.add_column("Action", style="bold white", min_width=20)
         table.add_column("Description", style="dim", min_width=25)
 
@@ -639,13 +508,7 @@ class FileCommander:
         console.print()
 
     def search_files(self):
-        """
-        General file search functionality for all types of files.
-
-        Provides comprehensive search capabilities for documents, images, videos, and other files.
-        Uses the same fast indexing system with multiple search strategies.
-        Supports continuous searching without re-indexing for better performance.
-        """
+        """Index drives (once), then continuous search loop. Actions: open, rename, search again."""
         UIUtils.print_section_header("⚡ Search & Manage Files/Folders")
 
         # Only build index if not already cached
@@ -777,10 +640,7 @@ class FileCommander:
         UIUtils.print_separator()
 
     def _handle_search_actions(self, results: List[Path]) -> bool:
-        """
-        Handle user actions on search results (open, rename, etc.).
-        Returns True if user wants to continue searching, False to exit to main menu.
-        """
+        """Show action menu. Returns True to continue searching, False to exit to main menu."""
         actions = [
             "1. 📂 Open item",
             "2. ✏️ Rename item",
@@ -814,11 +674,7 @@ class FileCommander:
             return False  # Back to main menu
 
     def _open_item(self, item_path: Path):
-        """
-        Open file or folder using system default applications.
-
-        Uses Windows os.startfile which safely handles paths without shell injection risk.
-        """
+        """Open file/folder with os.startfile (safe, no shell injection)."""
 
         def open_operation():
             # os.startfile works for both files and folders on Windows
@@ -829,12 +685,7 @@ class FileCommander:
         UIUtils.safe_execute("opening item", open_operation)
 
     def _rename_item(self, item_path: Path):
-        """
-        Rename file or folder with integrated undo option.
-
-        After successful rename, immediately offers the user a chance to undo
-        the operation, which catches typos and second thoughts instantly.
-        """
+        """Rename file/folder with validation. Offers undo after successful rename."""
         UIUtils.print_section_break()
         console.print(Panel(f"✏️ Rename: {item_path.name}", style="bold cyan"))
         UIUtils.print_section_break()
@@ -855,14 +706,14 @@ class FileCommander:
         new_path = item_path.parent / new_name
 
         def rename_operation():
-            if new_path.exists():
+            try:
+                original_path.rename(new_path)
+                item_type = PathUtils.get_item_type(new_path)
+                UIUtils.print_success(f"Renamed {item_type} to: {new_name}")
+                return True
+            except FileExistsError:
                 UIUtils.print_error(f"Name already exists: {new_name}")
                 return False
-
-            original_path.rename(new_path)
-            item_type = PathUtils.get_item_type(new_path)
-            UIUtils.print_success(f"Renamed {item_type} to: {new_name}")
-            return True
 
         # Perform rename operation
         rename_successful = UIUtils.safe_execute("renaming item", rename_operation)
@@ -883,321 +734,9 @@ class FileCommander:
                 UIUtils.safe_execute("undoing rename", undo_operation)
             UIUtils.print_section_break()
 
-    def create_files_folders(self):
-        """Unified file and folder creation menu with flexible options."""
-        UIUtils.print_section_header("📁 Create Files & Folders")
-
-        options = ["1. 📁 Folder only", "2. 📄 File only", "3. 📁 Folder with files"]
-        choice = UIUtils.show_options_and_choose(options, "Choose option")
-
-        UIUtils.print_section_break()
-
-        if choice == "1":
-            self._create_items(creation_type="folder")
-        elif choice == "2":
-            self._create_items(creation_type="file")
-        elif choice == "3":
-            self._create_items(creation_type="folder_with_files")
-
-    def _get_location_choice(self) -> str:
-        """
-        Get destination location from user with support for multiple drives.
-
-        Dynamically detects available drives and presents them as options
-        along with common folders.
-        """
-        drives = PathUtils.get_available_drives()
-
-        # Common location options
-        locations = [
-            ("1", "🖥️ Desktop", str(self.desktop)),
-            ("2", "📄 Documents", str(Path.home() / "Documents")),
-            ("3", "⬇️ Downloads", str(Path.home() / "Downloads")),
-        ]
-
-        # Add detected drives
-        for i, drive in enumerate(drives, 4):
-            locations.append(
-                (str(i), f"💾 {drive}:", str(PathUtils.get_drive_path(drive)))
-            )
-
-        # Custom path option
-        locations.append((str(len(locations) + 1), "📁 Custom Path", "custom"))
-
-        # Display options
-        for option, display, _ in locations:
-            console.print(f"{option}. {display}")
-
-        choice = UIUtils.get_user_choice(
-            "Select location", [opt[0] for opt in locations]
-        )
-        selected = locations[int(choice) - 1][2]
-
-        return Prompt.ask("Enter custom path") if selected == "custom" else selected
-
-    def _create_items(self, creation_type: str):
-        """
-        Unified creation method for all file/folder operations.
-
-        This consolidates the three previously separate creation methods into one
-        flexible method that handles different creation scenarios.
-        """
-        # Get location for creation
-        location = self._get_location_choice()
-
-        if creation_type == "file":
-            self._create_single_file(location)
-        elif creation_type == "folder":
-            self._create_single_folder(location)
-        elif creation_type == "folder_with_files":
-            self._create_folder_with_files(location)
-
-    def _create_single_file(self, location: str):
-        """Create single file with optional content."""
-        UIUtils.print_info("Creating New File")
-        UIUtils.print_separator()
-
-        file_name = Prompt.ask("📄 File name (with extension)")
-        if not UIUtils.validate_filename_or_show_error(file_name):
-            return
-
-        # Optional content
-        content = ""
-        if Confirm.ask("Add content to file?", default=False):
-            content = Prompt.ask("Enter content", default="")
-
-        def create_operation():
-            file_path = Path(location) / file_name
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(content, encoding="utf-8")
-            UIUtils.print_success(f"Created file: {file_path}")
-
-            # Offer to open the created file
-            UIUtils.print_separator()
-            if Confirm.ask(
-                "[bold cyan]📄 Do you want to open this file?[/bold cyan]",
-                default=False,
-            ):
-                self._open_item(file_path)
-
-            return True
-
-        UIUtils.safe_execute("creating file", create_operation)
-        UIUtils.print_section_break()
-
-    def _create_single_folder(self, location: str):
-        """Create single folder with option for subfolders."""
-        UIUtils.print_info("Creating New Folder")
-        UIUtils.print_separator()
-
-        folder_name = Prompt.ask("📁 Folder name")
-        if not UIUtils.validate_filename_or_show_error(folder_name):
-            return
-
-        def create_operation():
-            folder_path = Path(location) / folder_name
-            folder_path.mkdir(parents=True, exist_ok=True)
-            UIUtils.print_success(f"Created folder: {folder_path}")
-
-            # Ask about subfolders
-            UIUtils.print_separator()
-            if Confirm.ask(
-                "[bold cyan]📁 Do you want to create subfolders?[/bold cyan]",
-                default=False,
-            ):
-                self._create_subfolders(folder_path)
-
-            # Offer to open the created folder
-            UIUtils.print_separator()
-            if Confirm.ask(
-                "[bold cyan]📂 Do you want to open this folder?[/bold cyan]",
-                default=False,
-            ):
-                self._open_item(folder_path)
-
-            return True
-
-        UIUtils.safe_execute("creating folder", create_operation)
-        UIUtils.print_section_break()
-
-    def _create_folder_with_files(self, location: str):
-        """Create folder with files and comprehensive nesting options."""
-        UIUtils.print_info("Creating Folder with Files")
-        UIUtils.print_separator()
-
-        folder_name = Prompt.ask("📁 Folder name")
-        if not UIUtils.validate_filename_or_show_error(folder_name):
-            return
-
-        def create_operation():
-            folder_path = Path(location) / folder_name
-            folder_path.mkdir(parents=True, exist_ok=True)
-            UIUtils.print_success(f"Created folder: {folder_path}")
-            UIUtils.print_separator()
-
-            # Create initial files
-            file_count = 0
-            UIUtils.print_info("Creating files in main folder")
-            while True:
-                file_name = Prompt.ask("📄 File name (or 'done' to finish)")
-                if file_name.lower() == "done":
-                    break
-
-                if not UIUtils.validate_filename_or_show_error(file_name):
-                    continue
-
-                file_path = folder_path / file_name
-                file_path.write_text("", encoding="utf-8")
-                UIUtils.print_success(f"Created file: {file_name}")
-                file_count += 1
-
-            # Show summary
-            UIUtils.print_separator()
-            UIUtils.print_success(f"Created folder with {file_count} files")
-
-            # Ask about subfolders
-            if Confirm.ask(
-                "[bold cyan]📁 Do you want to create subfolders?[/bold cyan]",
-                default=False,
-            ):
-                self._create_subfolders(folder_path, allow_files=True)
-
-            # Offer to open the created folder
-            UIUtils.print_separator()
-            if Confirm.ask(
-                "[bold cyan]📂 Do you want to open this folder?[/bold cyan]",
-                default=False,
-            ):
-                self._open_item(folder_path)
-
-            return True
-
-        UIUtils.safe_execute("creating folder with files", create_operation)
-        UIUtils.print_section_break()
-
-    def _create_subfolders(self, parent_path: Path, allow_files: bool = False):
-        """
-        Create subfolders in parent directory.
-
-        Args:
-            parent_path: Directory to create subfolders in
-            allow_files: If True, offer to add files to each subfolder
-        """
-        UIUtils.print_info(f"Creating subfolders in: {parent_path.name}")
-
-        while True:
-            subfolder_name = Prompt.ask("📁 Subfolder name (or 'done' to finish)")
-            if subfolder_name.lower() == "done":
-                break
-
-            if not UIUtils.validate_filename_or_show_error(subfolder_name):
-                continue
-
-            try:
-                subfolder_path = parent_path / subfolder_name
-                subfolder_path.mkdir(parents=True, exist_ok=True)
-                UIUtils.print_success(f"Created subfolder: {subfolder_name}")
-
-                if allow_files and Confirm.ask(
-                    f"[bold cyan]📄 Add files to '{subfolder_name}'?[/bold cyan]",
-                    default=False,
-                ):
-                    self._create_additional_files(subfolder_path)
-
-            except (PermissionError, OSError) as e:
-                UIUtils.print_error(f"Error creating subfolder: {e}")
-
-    def _create_additional_files(self, parent_path: Path):
-        """Create additional files in the specified directory."""
-        UIUtils.print_info(f"Creating additional files in: {parent_path.name}")
-
-        while True:
-            file_name = Prompt.ask("📄 File name (or 'done' to finish)")
-            if file_name.lower() == "done":
-                break
-
-            if not UIUtils.validate_filename_or_show_error(file_name):
-                continue
-
-            try:
-                file_path = parent_path / file_name
-                file_path.write_text("", encoding="utf-8")
-                UIUtils.print_success(f"Created file: {file_name}")
-            except (PermissionError, OSError) as e:
-                UIUtils.print_error(f"Error creating file: {e}")
-
-    def list_directory(self):
-        """
-        List directory contents with filtering options.
-
-        Provides options to show folders only, files only, or everything.
-        Useful for exploring directory structure.
-        """
-        UIUtils.print_section_header("📋 List Directory Contents")
-
-        location = self._get_location_choice()
-
-        content_options = ["1. 📁 Folders only", "2. 📄 Files only", "3. 📋 Everything"]
-        content_type = UIUtils.show_options_and_choose(
-            content_options, "Choose content type"
-        )
-
-        UIUtils.print_section_break()
-        UIUtils.print_info(f"Listing contents of: {Path(location).name}")
-        UIUtils.print_section_break()
-
-        try:
-            path = Path(location)
-            items = []
-
-            # Collect items based on user preference
-            for item in path.iterdir():
-                if item.name.startswith("."):  # Skip hidden files
-                    continue
-
-                if content_type == "1" and item.is_dir():
-                    items.append((item, "📁 Folder"))
-                elif content_type == "2" and item.is_file():
-                    items.append((item, "📄 File"))
-                elif content_type == "3":
-                    item_type = PathUtils.get_item_emoji_type(item)
-                    items.append((item, item_type))
-
-            if not items:
-                UIUtils.print_warning("No items found in this directory")
-                UIUtils.print_section_break()
-                return
-
-            # Display results in formatted table with enhanced styling
-            table = UIUtils.create_results_table(
-                "", [("#", "white", 3), ("Name", "green", 0), ("Type", "white", 10)]
-            )
-
-            UIUtils.apply_standard_table_styling(table)
-
-            for i, (item, item_type) in enumerate(items, 1):
-                table.add_row(str(i), item.name, item_type)
-
-            console.print(table)
-            UIUtils.print_separator()
-
-            # Optional item opening
-            if Confirm.ask("[bold cyan]📂 Open any item?[/bold cyan]", default=False):
-                choice = UIUtils.get_user_choice(
-                    "Enter number", [str(i) for i in range(1, len(items) + 1)]
-                )
-                selected_item = items[int(choice) - 1][0]
-                self._open_item(selected_item)
-
-            UIUtils.print_section_break()
-
-        except Exception as e:
-            UIUtils.print_error(f"Error listing directory: {e}")
-            UIUtils.print_section_break()
-
     def show_search_statistics(self):
         """Display current search index statistics for user information."""
-        UIUtils.print_section_header("⚙️ Search Statistics")
+        UIUtils.print_section_header("📊 Search Statistics")
 
         table = UIUtils.create_results_table(
             "⚡ Search System Status",
@@ -1220,19 +759,13 @@ class FileCommander:
         UIUtils.print_section_break()
 
     def run_interactive(self):
-        """
-        Main interactive loop - the heart of the application.
-
-        Continuously displays the menu and processes user choices until
-        the user decides to exit. Uses exception handling to gracefully
-        handle unexpected errors.
-        """
+        """Main application loop. Shows menu and runs search or statistics based on user choice."""
         while True:
             try:
                 self.show_main_menu()
 
                 choice = UIUtils.get_user_choice(
-                    "Select option", ["0", "1", "2", "3", "4"]
+                    "Select option", ["0", "1", "2"]
                 )
 
                 if choice == "0":
@@ -1243,12 +776,8 @@ class FileCommander:
                     UIUtils.print_section_break()
                     break
                 elif choice == "1":
-                    self.create_files_folders()
-                elif choice == "2":
                     self.search_files()
-                elif choice == "3":
-                    self.list_directory()
-                elif choice == "4":
+                elif choice == "2":
                     self.show_search_statistics()
 
                 # Pause before returning to menu (better UX)

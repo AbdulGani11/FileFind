@@ -1,34 +1,16 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 
-# Distribution / Packaging
-dist/
-build/
-*.egg-info/
-
-# Unit Test / Coverage
+# Testing
 .pytest_cache/
-.coverage
-htmlcov/
 
-# Virtual Environments
+# Virtual Environment
 venv/
-env/
 .env
 
-# IDE / Editor
-.vscode/
-.idea/
-
-# Claude Code
-.claude/
-
-# Documentation (keep only Readme.md)
-IMPROVEMENTS.md
+# Documentation (personal reference)
 TECHNOLOGIES.md
 
-# Operating System
-.DS_Store
+# Windows
 Thumbs.db
