@@ -1,6 +1,6 @@
 # FileFind
 
-[![CI](https://github.com/AbdulGani11/file-commander/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdulGani11/file-commander/actions)
+[![CI](https://github.com/AbdulGani11/FileFind/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdulGani11/FileFind/actions)
 ![Platform Windows](https://img.shields.io/badge/platform-Windows-blue.svg)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -22,8 +22,8 @@
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/AbdulGani11/file-commander.git
-    cd file-commander
+    git clone [https://github.com/AbdulGani11/FileFind.git](https://github.com/AbdulGani11/FileFind.git)
+    cd FileFind
     ```
 
 2.  **Set up environment:**
@@ -41,7 +41,7 @@
 
 Run the app:
 ```bash
-python file-commander.py
+python FileFind.py
 ```
 
 ### What can it do?
