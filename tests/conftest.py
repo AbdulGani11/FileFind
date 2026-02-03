@@ -3,12 +3,15 @@ import importlib.util
 from pathlib import Path
 import pytest
 
-# Helper to import the hyphenated module
+# Helper to import the module
 def import_file_commander():
-    file_path = Path(__file__).parent.parent / "file-commander.py"
-    spec = importlib.util.spec_from_file_location("file_commander", file_path)
+    # UPDATED: Changed filename to FileFind.py
+    file_path = Path(__file__).parent.parent / "FileFind.py"
+    
+    # UPDATED: Changed internal name to FileFind
+    spec = importlib.util.spec_from_file_location("FileFind", file_path)
     module = importlib.util.module_from_spec(spec)
-    sys.modules["file_commander"] = module
+    sys.modules["FileFind"] = module
     spec.loader.exec_module(module)
     return module
 
