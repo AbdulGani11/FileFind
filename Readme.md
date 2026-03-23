@@ -15,14 +15,14 @@
 *   **Trie Data Structure**: O(m) prefix matching where m = query length. Search time depends only on query length, not collection size.
 *   **Smart Indexing**: Targeted C: drive indexing (user folders only) and complete indexing for other drives.
 *   **Relevance Ranking**: Results sorted by exact match, prefix match, filename length, and common directory location.
-*   **Security Validation**: Blocks directory traversal attacks, Windows reserved names, and invalid characters.
+*   **Security Validation**: Blocks directory traversal attacks (`../`, `\`, `/`), Windows reserved names, invalid characters, and NTFS symlink/junction traversal during indexing. Rename operations include a post-construction path check to prevent any file escaping its parent directory.
 *   **CI/CD Tested**: Automated testing on Python 3.10, 3.11, and 3.12 with GitHub Actions.
 
 ## Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/AbdulGani11/FileFind.git](https://github.com/AbdulGani11/FileFind.git)
+    git clone https://github.com/AbdulGani11/FileFind.git
     cd FileFind
     ```
 
@@ -54,11 +54,11 @@ Interactive menu with two options:
 1.  **Smart Indexing**: On first search, indexes your drives using a smart strategy:
     *   C: drive - Only indexes common user folders (Desktop, Documents, Downloads, Pictures, Videos)
     *   Other drives - Complete indexing of all accessible files
-2.  **Multi-Strategy Search**: When you search, runs 4 parallel algorithms:
+2.  **Multi-Strategy Search**: When you search, runs 4 algorithms in sequence:
     *   Exact match for direct filename hits
     *   Trie prefix matching for autocomplete-style results
     *   Word index for multi-word queries
-    *   Substring search as fallback
+    *   Substring search as fallback (only if earlier strategies return sparse results)
 3.  **Relevance Ranking**: Results sorted by exact matches first, then prefix matches, then by filename length and directory frequency
 4.  **File Operations**: Select results to open with default app or rename with undo support
 
@@ -74,7 +74,7 @@ pytest
 7 passed in 0.07s ✅
 
 Test Coverage:
-✓ Filename validation (security, length limits, reserved names)
+✓ Filename validation (security, length limits, reserved names, forward-slash traversal)
 ✓ Drive path detection and conversion
 ✓ File/folder type identification
 ✓ Trie insert and prefix search

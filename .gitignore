@@ -10,7 +10,13 @@ venv/
 .env
 
 # Documentation (personal reference)
-TECHNOLOGIES.md
+Documentation.md
+
+# VS Code (workspace settings - keep local)
+.vscode/
+
+# Claude Code session data
+.claude/
 
 # Windows
 Thumbs.db

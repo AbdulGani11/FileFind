@@ -26,13 +26,9 @@ def test_trie_insert_and_search(trie):
 def test_trie_case_insensitivity(trie):
     p = Path("test.txt")
     trie.insert("Test", p)
-    
-    # Search should be case insensitive depending on implementation
-    # The current Trie implementation lowercases the word on insert (in add_file logic) 
-    # but the Trie.insert method itself takes the word as is.
-    # Let's check Trie.insert implementation:
-    # "for char in word.lower():" -> It lowercases on insert!
-    
+
+    # Trie.insert lowercases every character on traversal,
+    # so searches are case-insensitive regardless of how the word was inserted.
     assert p in trie.search_prefix("test")
     assert p in trie.search_prefix("TEST")
 

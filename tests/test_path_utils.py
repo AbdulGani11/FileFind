@@ -1,5 +1,4 @@
 from pathlib import Path
-import pytest
 
 def test_is_safe_filename(path_utils):
     # Valid names
@@ -36,6 +35,10 @@ def test_is_safe_filename(path_utils):
 
     # Backslash in name (path traversal)
     assert not path_utils.is_safe_filename("sub\\file")
+
+    # Forward slash in name (path traversal / silent directory move)
+    assert not path_utils.is_safe_filename("sub/file")
+    assert not path_utils.is_safe_filename("/absolute")  # leading slash escapes to root
 
     # Filename length limits (Windows max = 255 chars)
     assert path_utils.is_safe_filename("a" * 255)  # Exactly 255 chars - valid

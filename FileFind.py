@@ -18,7 +18,6 @@ from rich.table import Table
 from rich.text import Text
 from rich.prompt import Prompt, Confirm
 from rich import box
-from rich.align import Align
 
 # Initialize Rich console for beautiful terminal output
 console = Console()
@@ -94,7 +93,8 @@ class PathUtils:
             return False
 
         # Windows file system restrictions - these characters cause errors
-        invalid_chars = '<>:"|?*'
+        # '/' is included to block path traversal during rename (e.g. "sub/file")
+        invalid_chars = '<>:"|?*/'
         if any(char in name for char in invalid_chars):
             return False
 
@@ -134,20 +134,14 @@ class UIUtils:
 
     @staticmethod
     def create_results_table(title: str, columns: List[Tuple[str, str, int]]) -> Table:
-        """Create Rich table with title and columns (name, style, width). Width 0 = auto-size."""
-        table = Table(title=title)
+        """Create styled Rich table with title and columns (name, style, width). Width 0 = auto-size."""
+        table = Table(title=title, show_lines=True, header_style="bold cyan")
         for name, style, width in columns:
             if width:
                 table.add_column(name, style=style, width=width)
             else:
                 table.add_column(name, style=style)
         return table
-
-    @staticmethod
-    def apply_standard_table_styling(table: Table):
-        """Apply consistent styling to all tables in the application"""
-        table.show_lines = True
-        table.header_style = "bold cyan"
 
     @staticmethod
     def get_user_choice(prompt: str, choices: List[str], default: Optional[str] = None) -> str:
@@ -300,6 +294,11 @@ class FileSearchIndex:
         # Statistics for user feedback
         self.total_items = 0
 
+    @staticmethod
+    def _tokenize(text: str) -> List[str]:
+        """Split text into searchable words on dots, underscores, and dashes."""
+        return text.replace(".", " ").replace("_", " ").replace("-", " ").split()
+
     def add_file(self, file_path: Path):
         """Index file/folder in Trie, exact_match, and word_index. Skips duplicates."""
         # Avoid duplicate indexing (important for performance)
@@ -320,9 +319,7 @@ class FileSearchIndex:
 
             # 3. Add to word index for flexible search
             # Split filename into searchable words (handle dots, underscores, dashes)
-            words = (
-                filename.replace(".", " ").replace("_", " ").replace("-", " ").split()
-            )
+            words = FileSearchIndex._tokenize(filename)
             for word in words:
                 if len(word) > MIN_WORD_LENGTH:  # Skip very short words (the, of, a, etc.)
                     self.word_index[word].add(file_path)
@@ -345,6 +342,11 @@ class FileSearchIndex:
         try:
             # rglob("*") recursively finds all files AND folders in subdirectories
             for item in folder_path.rglob("*"):
+                # Skip symlinks and NTFS junctions to avoid traversing outside
+                # the intended scope (e.g. OneDrive junctions, dev env mounts)
+                if item.is_symlink():
+                    continue
+
                 # Skip system directories for performance and security
                 if PathUtils.should_skip_directory(item.parent):
                     continue
@@ -378,7 +380,7 @@ class FileSearchIndex:
 
         # Strategy 3: Word-based search (handles different word orders)
         # Splits "the intern" into ["the", "intern"] for flexible matching
-        query_words = query.replace(".", " ").replace("_", " ").split()
+        query_words = FileSearchIndex._tokenize(query)
         for word in query_words:
             if word in self.word_index:
                 results.update(self.word_index[word])
@@ -435,7 +437,6 @@ class FileCommander:
     """Interactive file search application with Trie-based indexing and multi-strategy search."""
 
     def __init__(self):
-        self.desktop = Path.home() / "Desktop"
         self.search_index = FileSearchIndex()
         self._index_built = False  # Cache flag to avoid re-indexing
 
@@ -523,7 +524,7 @@ class FileCommander:
                 Path.home() / "Desktop",
                 Path.home() / "Videos",
                 Path.home() / "Pictures",
-                Path.home() / "Pictures" / "Samsung Flow",  # Phone sync locationa
+                Path.home() / "Pictures" / "Samsung Flow",  # Phone sync location
             ]
 
             console.print("[dim]   🎯 C: drive - Indexing user folders only...[/dim]")
@@ -621,9 +622,6 @@ class FileCommander:
             ],
         )
 
-        # Apply enhanced table styling
-        UIUtils.apply_standard_table_styling(table)
-
         # Show first results to avoid overwhelming the user
         for i, item in enumerate(results[:DISPLAY_RESULTS_LIMIT], 1):
             item_type = PathUtils.get_item_emoji_type(item)
@@ -715,6 +713,15 @@ class FileCommander:
                 UIUtils.print_error(f"Name already exists: {new_name}")
                 return False
 
+        # Guard: ensure the resolved new path stays in the same directory.
+        # Catches any edge case where a name could slip out of the parent folder.
+        if new_path.parent.resolve() != item_path.parent.resolve():
+            UIUtils.print_error(
+                "Rename cannot move a file to a different directory. "
+                "Use a plain name without slashes."
+            )
+            return
+
         # Perform rename operation
         rename_successful = UIUtils.safe_execute("renaming item", rename_operation)
 
@@ -742,9 +749,6 @@ class FileCommander:
             "⚡ Search System Status",
             [("Metric", "cyan", 20), ("Value", "green", 20), ("Details", "dim", 40)],
         )
-
-        # Apply enhanced table styling
-        UIUtils.apply_standard_table_styling(table)
 
         # Show indexing status and performance metrics
         table.add_row("Status", "✅ Ready", "Optimized for instant search")
